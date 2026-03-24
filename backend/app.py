@@ -26,16 +26,13 @@ def home():
 # Generate Unique UPI ID
 # -------------------------------
 def generate_upi(name):
-
     username = name.lower().replace(" ", ".")
 
     while True:
         random_number = random.randint(1000, 9999)
         upi_id = f"{username}{random_number}@trustpay"
 
-        existing = users.find_one({"upi_id": upi_id})
-
-        if not existing:
+        if not users.find_one({"upi_id": upi_id}):
             return upi_id
 
 
@@ -45,16 +42,30 @@ def generate_upi(name):
 @app.route("/register", methods=["POST"])
 def register():
 
-    data = request.json
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"message": "No data received"}), 400
+
+    print("REGISTER DATA:", data)
 
     name = data.get("name")
     email = data.get("email")
     mobile = data.get("mobile")
     password = data.get("password")
     upi_pin = data.get("upi_pin")
+    balance = data.get("balance")
 
-    if not upi_pin or len(upi_pin) != 4:
+    if not all([name, email, mobile, password, upi_pin, balance]):
+        return jsonify({"message": "All fields are required"}), 400
+
+    if len(str(upi_pin)) != 4:
         return jsonify({"message": "UPI PIN must be 4 digits"}), 400
+
+    try:
+        balance = float(balance)
+    except:
+        return jsonify({"message": "Invalid balance"}), 400
 
     if users.find_one({"email": email}):
         return jsonify({"message": "Email already registered"}), 400
@@ -70,7 +81,8 @@ def register():
         "mobile": mobile,
         "password": password,
         "upi_id": upi_id,
-        "upi_pin": upi_pin
+        "upi_pin": str(upi_pin),
+        "balance": balance
     }
 
     users.insert_one(user)
@@ -87,10 +99,16 @@ def register():
 @app.route("/login", methods=["POST"])
 def login():
 
-    data = request.json
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"message": "No data received"}), 400
 
     email = data.get("email")
     password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"message": "Email and password required"}), 400
 
     user = users.find_one({"email": email})
 
@@ -105,7 +123,8 @@ def login():
         "name": user["name"],
         "email": user["email"],
         "mobile": user["mobile"],
-        "upi": user["upi_id"]
+        "upi": user["upi_id"],
+        "balance": user.get("balance", 0)
     }), 200
 
 
@@ -115,35 +134,38 @@ def login():
 @app.route("/transaction", methods=["POST"])
 def make_transaction():
 
-    data = request.json
+    data = request.get_json()
 
-    print("Transaction Request:", data)
+    if not data:
+        return jsonify({"message": "No data received"}), 400
+
+    print("TRANSACTION DATA:", data)
 
     sender_upi = data.get("sender_upi")
     receiver_input = data.get("receiver_upi")
     amount = data.get("amount")
     entered_pin = data.get("upi_pin")
 
-    # -------------------------------
-    # Find Sender
-    # -------------------------------
+    if not all([sender_upi, receiver_input, amount, entered_pin]):
+        return jsonify({"message": "All fields required"}), 400
+
     sender = users.find_one({"upi_id": sender_upi})
 
     if not sender:
         return jsonify({"message": "Sender not found"}), 404
 
-    # -------------------------------
-    # Verify PIN (FIXED)
-    # -------------------------------
     if str(sender["upi_pin"]) != str(entered_pin):
         return jsonify({
             "success": False,
             "message": "Invalid UPI PIN"
         }), 401
 
-    # -------------------------------
-    # Find Receiver
-    # -------------------------------
+    if sender.get("balance", 0) < float(amount):
+        return jsonify({
+            "success": False,
+            "message": "Insufficient balance"
+        }), 400
+
     receiver = users.find_one({"upi_id": receiver_input})
 
     if not receiver:
@@ -154,13 +176,21 @@ def make_transaction():
 
     receiver_upi = receiver["upi_id"]
 
-    # -------------------------------
-    # Store Transaction
-    # -------------------------------
+    # update balances
+    users.update_one(
+        {"upi_id": sender_upi},
+        {"$inc": {"balance": -float(amount)}}
+    )
+
+    users.update_one(
+        {"upi_id": receiver_upi},
+        {"$inc": {"balance": float(amount)}}
+    )
+
     transaction = {
         "sender_upi": sender_upi,
         "receiver_upi": receiver_upi,
-        "amount": amount,
+        "amount": float(amount),
         "timestamp": datetime.now(),
         "status": "SUCCESS"
     }
@@ -172,47 +202,49 @@ def make_transaction():
         "message": "Transaction successful"
     }), 200
 
+
+# -------------------------------
+# ✅ FIXED HISTORY API (IMPORTANT)
+# -------------------------------
 @app.route('/history', methods=['GET'])
 def history():
+
     upi = request.args.get('upi')
 
     if not upi:
-        return jsonify([])
+        return jsonify([]), 200
 
     user_transactions = list(transactions.find({
-        "sender_upi": upi
+        "$or": [
+            {"sender_upi": upi},
+            {"receiver_upi": upi}
+        ]
     }))
 
     result = []
 
     for t in user_transactions:
-        try:
-            amount = float(t.get("amount", 0))
-        except:
-            amount = 0
-
         result.append({
-            "amount": amount,
-            "type": "SENT"
+            "amount": float(t.get("amount", 0)),
+            "type": "SENT" if t["sender_upi"] == upi else "RECEIVED"
         })
 
-    return jsonify(result)
+    return jsonify(result), 200
 
-@app.route("/transactions/<upi_id>", methods=["GET"])
-def get_transactions(upi_id):
 
-    user_transactions = list(transactions.find({
-        "$or": [
-            {"sender_upi": upi_id},
-            {"receiver_upi": upi_id}
-        ]
-    }))
+# -------------------------------
+# Balance API
+# -------------------------------
+@app.route("/balance/<upi>", methods=["GET"])
+def get_balance(upi):
 
-    for t in user_transactions:
-        t["_id"] = str(t["_id"])
-        t["timestamp"] = t["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    user = users.find_one({"upi_id": upi})
 
-    return jsonify(user_transactions)
+    if not user:
+        return jsonify({"balance": 0})
+
+    return jsonify({"balance": user.get("balance", 0)})
+
 
 # -------------------------------
 # Run Server

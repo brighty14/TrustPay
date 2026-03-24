@@ -15,12 +15,15 @@ import com.google.android.material.textfield.TextInputEditText;
 
 import org.json.JSONObject;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class RegisterActivity extends AppCompatActivity {
 
-    TextInputEditText etName, etEmail, etMobile, etPassword, etUpiPin;
+    TextInputEditText etName, etEmail, etMobile, etPassword, etUpiPin, etBalance;
     MaterialButton btnRegister;
 
-    String BASE_URL = "http://10.0.2.2:5000/register";
+    String BASE_URL = "http://10.228.6.76:5000/register";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +35,7 @@ public class RegisterActivity extends AppCompatActivity {
         etMobile = findViewById(R.id.etMobile);
         etPassword = findViewById(R.id.etPassword);
         etUpiPin = findViewById(R.id.etUpiPin);
+        etBalance = findViewById(R.id.etBalance); // ✅ NEW
 
         btnRegister = findViewById(R.id.btnRegister);
 
@@ -40,14 +44,32 @@ public class RegisterActivity extends AppCompatActivity {
 
     private void registerUser() {
 
-        String name = etName.getText().toString();
-        String email = etEmail.getText().toString();
-        String mobile = etMobile.getText().toString();
-        String password = etPassword.getText().toString();
-        String upiPin = etUpiPin.getText().toString();
+        String name = etName.getText().toString().trim();
+        String email = etEmail.getText().toString().trim();
+        String mobile = etMobile.getText().toString().trim();
+        String password = etPassword.getText().toString().trim();
+        String upiPin = etUpiPin.getText().toString().trim();
+        String balance = etBalance.getText().toString().trim(); // ✅ NEW
 
-        if(upiPin.length() != 4){
+        // 🔴 Check empty fields
+        if (name.isEmpty() || email.isEmpty() || mobile.isEmpty() ||
+                password.isEmpty() || upiPin.isEmpty() || balance.isEmpty()) {
+
+            Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 🔴 PIN validation
+        if (upiPin.length() != 4) {
             Toast.makeText(this, "UPI PIN must be 4 digits", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 🔴 Balance validation
+        try {
+            Double.parseDouble(balance);
+        } catch (Exception e) {
+            Toast.makeText(this, "Enter valid balance", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -60,6 +82,7 @@ public class RegisterActivity extends AppCompatActivity {
             jsonBody.put("mobile", mobile);
             jsonBody.put("password", password);
             jsonBody.put("upi_pin", upiPin);
+            jsonBody.put("balance", balance); // ✅ NEW FIELD
 
             RequestQueue queue = Volley.newRequestQueue(this);
 
@@ -76,11 +99,28 @@ public class RegisterActivity extends AppCompatActivity {
                     },
                     error -> {
 
-                        Toast.makeText(this,
-                                "Registration Failed",
-                                Toast.LENGTH_SHORT).show();
+                        // 🔥 Show backend error if available
+                        String message = "Registration Failed";
+                        if (error.networkResponse != null && error.networkResponse.data != null) {
+                            try {
+                                String errorData = new String(error.networkResponse.data);
+                                message = errorData;
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
 
-                    });
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                    }) {
+
+                // ✅ IMPORTANT HEADER
+                @Override
+                public Map<String, String> getHeaders() {
+                    Map<String, String> headers = new HashMap<>();
+                    headers.put("Content-Type", "application/json");
+                    return headers;
+                }
+            };
 
             queue.add(request);
 
