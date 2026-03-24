@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.TrustPay"
+        android:usesCleartextTraffic="true">
+
+        <!-- Activities -->
+        <activity android:name=".ui.fraud.SuspiciousActivityActivity" />
+        <activity android:name=".ui.result.DeclineActivity" />
+        <activity android:name=".ui.verification.PinActivity" />
+        <activity android:name=".ui.profile.ProfileActivity" />
+        <activity android:name=".ui.history.HistoryActivity" />
+        <activity android:name=".ui.auth.RegisterActivity" />
+        <activity android:name=".ui.result.ResultActivity" />
+        <activity android:name=".ui.verification.VerificationActivity" />
+        <activity android:name=".ui.transaction.TransactionActivity" />
+        <activity android:name=".ui.dashboard.DashboardActivity" />
+        <activity android:name=".ui.liveness.LivenessActivity" />
+
+        <!-- Launcher Activity -->
+        <activity
+            android:name=".ui.auth.LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>
