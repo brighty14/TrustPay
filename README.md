@@ -184,16 +184,3 @@ python app.py
 * 📊 Admin Dashboard
 
 ---
-
-## 👨‍💻 Author
-
-**Arunprakash S**
-Master of Computer Applications (MCA)
-
----
-
-## 📜 License
-
-This project is for academic and learning purposes.
-
----
