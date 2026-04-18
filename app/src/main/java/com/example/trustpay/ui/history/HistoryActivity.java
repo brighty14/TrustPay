@@ -61,7 +61,7 @@ public class HistoryActivity extends AppCompatActivity {
             return;
         }
 
-        String url = "http://10.0.2.2:5000/transactions/" + upiId;
+        String url = "http://10.41.17.76:5000/transactions/" + upiId;
 
         RequestQueue queue = Volley.newRequestQueue(this);
 

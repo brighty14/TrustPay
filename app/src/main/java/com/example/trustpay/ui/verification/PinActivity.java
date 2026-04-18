@@ -30,7 +30,7 @@ public class PinActivity extends AppCompatActivity {
 
     ProgressDialog progressDialog;
 
-    String BASE_URL = "http://10.0.2.2:5000/transaction";
+    String BASE_URL = "http://10.41.17.76:5000/transaction";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

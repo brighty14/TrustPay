@@ -18,6 +18,7 @@
         <activity android:name=".ui.verification.PinActivity" />
         <activity android:name=".ui.profile.ProfileActivity" />
         <activity android:name=".ui.history.HistoryActivity" />
+        <activity android:name=".ui.auth.FaceRegistrationActivity" />
         <activity android:name=".ui.auth.RegisterActivity" />
         <activity android:name=".ui.result.ResultActivity" />
         <activity android:name=".ui.verification.VerificationActivity" />

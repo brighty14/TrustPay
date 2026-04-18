@@ -25,7 +25,7 @@ public class LoginActivity extends AppCompatActivity {
     MaterialButton btnLogin;
     TextView tvRegister;
 
-    String LOGIN_URL = "http://10.0.2.2:5000/login";
+    String LOGIN_URL = "http://10.41.17.76:5000/login";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

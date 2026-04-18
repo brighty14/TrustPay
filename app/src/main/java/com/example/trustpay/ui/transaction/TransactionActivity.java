@@ -31,7 +31,7 @@ public class TransactionActivity extends AppCompatActivity {
     String receiverUpi;
 
 
-    String HISTORY_URL = "http://10.0.2.2:5000/history";
+    String HISTORY_URL = "http://10.41.17.76:5000/history";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,7 +110,9 @@ public class TransactionActivity extends AppCompatActivity {
 
                         if (isFraud) {
                             Intent intent = new Intent(TransactionActivity.this, SuspiciousActivityActivity.class);
-                            intent.putExtra("amount", amount);
+                            intent.putExtra("sender_upi", senderUpi);
+                            intent.putExtra("receiver_upi", receiverUpi);
+                            intent.putExtra("amount", String.valueOf(amount));
                             startActivity(intent);
                         } else {
                             goToPin(amount);
