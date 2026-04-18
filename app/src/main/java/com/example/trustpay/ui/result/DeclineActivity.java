@@ -10,6 +10,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.trustpay.R;
 import com.example.trustpay.ui.dashboard.DashboardActivity;
 
+import org.json.JSONObject;
+
 public class DeclineActivity extends AppCompatActivity {
 
     Button btnBackDashboard;
@@ -26,8 +28,8 @@ public class DeclineActivity extends AppCompatActivity {
         // Receive failure reason
         String reason = getIntent().getStringExtra("reason");
 
-        if(reason != null){
-            tvReason.setText(reason);
+        if (reason != null) {
+            tvReason.setText(formatReason(reason));
         }
 
         btnBackDashboard.setOnClickListener(v -> {
@@ -38,5 +40,22 @@ public class DeclineActivity extends AppCompatActivity {
             startActivity(intent);
             finish();
         });
+    }
+
+    private String formatReason(String reason) {
+        String cleanReason = reason.trim();
+
+        if (cleanReason.startsWith("{") && cleanReason.endsWith("}")) {
+            try {
+                JSONObject jsonObject = new JSONObject(cleanReason);
+                String message = jsonObject.optString("message", "");
+                if (!message.isEmpty()) {
+                    return message;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return cleanReason;
     }
 }

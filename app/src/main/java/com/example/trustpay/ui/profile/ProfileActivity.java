@@ -17,7 +17,7 @@ public class ProfileActivity extends AppCompatActivity {
 
     TextView tvName, tvEmail, tvMobile, tvUpi, tvBalance;
 
-    String BASE_URL = "http://10.228.6.76:5000/balance/";
+    String BASE_URL = "http://10.41.17.76:5000/balance/";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

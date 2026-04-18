@@ -18,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ExperimentalGetImage;
@@ -31,17 +32,12 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
 import com.example.trustpay.R;
 import com.example.trustpay.network.ApiClient;
 import com.example.trustpay.network.ApiService;
 import com.example.trustpay.network.RegisterRequest;
 import com.example.trustpay.network.RegisterResponse;
 import com.google.android.material.button.MaterialButton;
-import com.google.android.material.textfield.TextInputEditText;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.face.Face;
@@ -49,13 +45,10 @@ import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
 
-import org.json.JSONObject;
-
 import java.io.ByteArrayOutputStream;
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -63,46 +56,57 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class RegisterActivity extends AppCompatActivity {
+public class FaceRegistrationActivity extends AppCompatActivity {
 
-    private static final int CAMERA_PERMISSION_CODE = 101;
-    private static final float MIN_EYE_OPEN_PROBABILITY = 0.6f;
+    private static final int CAMERA_PERMISSION_CODE = 201;
+    private static final float MIN_EYE_OPEN_PROBABILITY = 0.45f;
     private static final float CENTER_TOLERANCE_RATIO = 0.18f;
+    private static final int STEP_FRONT_FACE = 0;
+    private static final int STEP_LEFT_FACE = 1;
+    private static final int STEP_RIGHT_FACE = 2;
+    private static final int STEP_DONE = 3;
 
-    TextInputEditText etName, etEmail, etMobile, etPassword, etUpiPin, etBalance;
-    PreviewView previewView;
-    ImageView ivFacePreview;
-    TextView tvFaceStatus;
-    MaterialButton btnCaptureFace;
-    MaterialButton btnRegister;
+    private PreviewView previewView;
+    private TextView tvFaceStatus;
+    private ImageView ivCapturedFace;
+    private MaterialButton btnCaptureFace;
+    private MaterialButton btnSubmitRegister;
 
     private ExecutorService cameraExecutor;
     private ProcessCameraProvider cameraProvider;
     private ImageCapture imageCapture;
     private FaceDetector faceDetector;
-    private boolean isValidFaceDetected = false;
-    private String capturedFaceBase64 = null;
 
-    String BASE_URL = "http://10.41.17.76:5000/register";
+    private boolean isValidFaceDetected = false;
+    private int currentCaptureStep = STEP_FRONT_FACE;
+    private String frontFaceBase64 = null;
+    private String leftFaceBase64 = null;
+    private String rightFaceBase64 = null;
+
+    private String username;
+    private String email;
+    private String mobile;
+    private String password;
+    private String upiPin;
+    private double balance;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_register);
+        setContentView(R.layout.activity_face_registration);
 
-        etName = findViewById(R.id.etName);
-        etEmail = findViewById(R.id.etEmail);
-        etMobile = findViewById(R.id.etMobile);
-        etPassword = findViewById(R.id.etPassword);
-        etUpiPin = findViewById(R.id.etUpiPin);
-        etBalance = findViewById(R.id.etBalance); // ✅ NEW
+        previewView = findViewById(R.id.previewViewFaceRegister);
+        tvFaceStatus = findViewById(R.id.tvFaceRegisterStatus);
+        ivCapturedFace = findViewById(R.id.ivCapturedFaceRegister);
+        btnCaptureFace = findViewById(R.id.btnCaptureFaceRegister);
+        btnSubmitRegister = findViewById(R.id.btnSubmitFaceRegister);
 
-        btnRegister = findViewById(R.id.btnRegister);
-
-        previewView = findViewById(R.id.previewView);
-        ivFacePreview = findViewById(R.id.ivFacePreview);
-        tvFaceStatus = findViewById(R.id.tvFaceStatus);
-        btnCaptureFace = findViewById(R.id.btnCaptureFace);
+        username = getIntent().getStringExtra("username");
+        email = getIntent().getStringExtra("email");
+        mobile = getIntent().getStringExtra("mobile");
+        password = getIntent().getStringExtra("password");
+        upiPin = getIntent().getStringExtra("upi_pin");
+        balance = Double.parseDouble(getIntent().getStringExtra("balance"));
 
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
@@ -117,146 +121,21 @@ public class RegisterActivity extends AppCompatActivity {
         faceDetector = FaceDetection.getClient(options);
 
         btnCaptureFace.setOnClickListener(v -> captureFaceImage());
-        btnRegister.setOnClickListener(v -> openFaceRegistrationPage());
+        btnSubmitRegister.setOnClickListener(v -> submitRegistration());
 
-        if (System.currentTimeMillis() < 0) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                    == PackageManager.PERMISSION_GRANTED) {
-                startCamera();
-            } else {
-                ActivityCompat.requestPermissions(
-                        this,
-                        new String[]{Manifest.permission.CAMERA},
-                        CAMERA_PERMISSION_CODE
-                );
-            }
-        }
-    }
+        btnSubmitRegister.setEnabled(false);
+        showPosePopup("Step 1", "Look straight at the camera and capture your face.");
+        refreshCaptureUi();
 
-    private void openFaceRegistrationPage() {
-        String username = getInputValue(etName);
-        String email = getInputValue(etEmail);
-        String mobile = getInputValue(etMobile);
-        String password = getInputValue(etPassword);
-        String upiPin = getInputValue(etUpiPin);
-        String balanceText = getInputValue(etBalance);
-
-        if (username.isEmpty() || email.isEmpty() || mobile.isEmpty()
-                || password.isEmpty() || upiPin.isEmpty() || balanceText.isEmpty()) {
-            Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (upiPin.length() != 4) {
-            Toast.makeText(this, "UPI PIN must be 4 digits", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        try {
-            Double.parseDouble(balanceText);
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Enter a valid balance", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Intent intent = new Intent(RegisterActivity.this, FaceRegistrationActivity.class);
-        intent.putExtra("username", username);
-        intent.putExtra("email", email);
-        intent.putExtra("mobile", mobile);
-        intent.putExtra("password", password);
-        intent.putExtra("upi_pin", upiPin);
-        intent.putExtra("balance", balanceText);
-        startActivity(intent);
-    }
-
-    private void registerUser() {
-        registerUserWithFace();
-        if (capturedFaceBase64 == null || capturedFaceBase64 != null) {
-            return;
-        }
-
-        String name = etName.getText().toString().trim();
-        String email = etEmail.getText().toString().trim();
-        String mobile = etMobile.getText().toString().trim();
-        String password = etPassword.getText().toString().trim();
-        String upiPin = etUpiPin.getText().toString().trim();
-        String balance = etBalance.getText().toString().trim(); // ✅ NEW
-
-        // 🔴 Check empty fields
-        if (name.isEmpty() || email.isEmpty() || mobile.isEmpty() ||
-                password.isEmpty() || upiPin.isEmpty() || balance.isEmpty()) {
-
-            Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 🔴 PIN validation
-        if (upiPin.length() != 4) {
-            Toast.makeText(this, "UPI PIN must be 4 digits", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 🔴 Balance validation
-        try {
-            Double.parseDouble(balance);
-        } catch (Exception e) {
-            Toast.makeText(this, "Enter valid balance", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        try {
-
-            JSONObject jsonBody = new JSONObject();
-
-            jsonBody.put("name", name);
-            jsonBody.put("email", email);
-            jsonBody.put("mobile", mobile);
-            jsonBody.put("password", password);
-            jsonBody.put("upi_pin", upiPin);
-            jsonBody.put("balance", balance); // ✅ NEW FIELD
-
-            RequestQueue queue = Volley.newRequestQueue(this);
-
-            JsonObjectRequest request = new JsonObjectRequest(
-                    Request.Method.POST,
-                    BASE_URL,
-                    jsonBody,
-                    response -> {
-
-                        Toast.makeText(this,
-                                "Registered Successfully\nUPI: " + response.optString("upi_id"),
-                                Toast.LENGTH_LONG).show();
-
-                    },
-                    error -> {
-
-                        // 🔥 Show backend error if available
-                        String message = "Registration Failed";
-                        if (error.networkResponse != null && error.networkResponse.data != null) {
-                            try {
-                                String errorData = new String(error.networkResponse.data);
-                                message = errorData;
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-
-                        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-                    }) {
-
-                // ✅ IMPORTANT HEADER
-                @Override
-                public Map<String, String> getHeaders() {
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Content-Type", "application/json");
-                    return headers;
-                }
-            };
-
-            queue.add(request);
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            startCamera();
+        } else {
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.CAMERA},
+                    CAMERA_PERMISSION_CODE
+            );
         }
     }
 
@@ -328,6 +207,7 @@ public class RegisterActivity extends AppCompatActivity {
             Float leftEyeOpen = face.getLeftEyeOpenProbability();
             Float rightEyeOpen = face.getRightEyeOpenProbability();
             Rect box = face.getBoundingBox();
+            float headY = face.getHeadEulerAngleY();
 
             boolean eyesOpen = leftEyeOpen != null
                     && rightEyeOpen != null
@@ -341,17 +221,24 @@ public class RegisterActivity extends AppCompatActivity {
             boolean centered = Math.abs(boxCenterX - frameCenterX) <= imageWidth * CENTER_TOLERANCE_RATIO
                     && Math.abs(boxCenterY - frameCenterY) <= imageHeight * CENTER_TOLERANCE_RATIO;
 
-            validFace = eyesOpen && centered;
+            boolean poseOk;
+            if (currentCaptureStep == STEP_FRONT_FACE) {
+                poseOk = Math.abs(headY) <= 10;
+            } else {
+                poseOk = Math.abs(headY) >= 12;
+            }
+
+            validFace = eyesOpen && centered && poseOk;
         }
 
         boolean finalValidFace = validFace;
         runOnUiThread(() -> {
             isValidFaceDetected = finalValidFace;
             if (finalValidFace) {
-                tvFaceStatus.setText("Face aligned. Tap Capture Face");
+                tvFaceStatus.setText(getCurrentPoseReadyMessage());
                 tvFaceStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark));
             } else {
-                tvFaceStatus.setText("Align your face properly");
+                tvFaceStatus.setText(getCurrentPoseInstruction());
                 tvFaceStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
             }
         });
@@ -364,7 +251,7 @@ public class RegisterActivity extends AppCompatActivity {
         }
 
         if (!isValidFaceDetected) {
-            Toast.makeText(this, "Align your face properly", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getCurrentPoseInstruction(), Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -379,7 +266,7 @@ public class RegisterActivity extends AppCompatActivity {
 
                         if (bitmap == null) {
                             runOnUiThread(() -> Toast.makeText(
-                                    RegisterActivity.this,
+                                    FaceRegistrationActivity.this,
                                     "Face capture failed",
                                     Toast.LENGTH_SHORT
                             ).show());
@@ -387,28 +274,166 @@ public class RegisterActivity extends AppCompatActivity {
                         }
 
                         Bitmap rotatedBitmap = rotateAndMirrorBitmap(bitmap, rotationDegrees);
-                        capturedFaceBase64 = encodeBitmapToBase64(rotatedBitmap);
+                        String faceBase64 = encodeBitmapToBase64(rotatedBitmap);
 
                         runOnUiThread(() -> {
-                            ivFacePreview.setImageBitmap(rotatedBitmap);
-                            Toast.makeText(
-                                    RegisterActivity.this,
-                                    "Face captured successfully",
-                                    Toast.LENGTH_SHORT
-                            ).show();
+                            ivCapturedFace.setImageBitmap(rotatedBitmap);
+                            saveCurrentPoseCapture(faceBase64);
                         });
                     }
 
                     @Override
                     public void onError(@NonNull ImageCaptureException exception) {
                         runOnUiThread(() -> Toast.makeText(
-                                RegisterActivity.this,
+                                FaceRegistrationActivity.this,
                                 "Face capture failed",
                                 Toast.LENGTH_SHORT
                         ).show());
                     }
                 }
         );
+    }
+
+    private void submitRegistration() {
+        if (frontFaceBase64 == null || leftFaceBase64 == null || rightFaceBase64 == null) {
+            Toast.makeText(this, "Please capture front, left and right face poses", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        btnSubmitRegister.setEnabled(false);
+
+        RegisterRequest request = new RegisterRequest(
+                username,
+                email,
+                mobile,
+                password,
+                upiPin,
+                balance,
+                frontFaceBase64,
+                leftFaceBase64,
+                rightFaceBase64
+        );
+
+        ApiService apiService = ApiClient.getClient().create(ApiService.class);
+        apiService.registerUser(request).enqueue(new Callback<RegisterResponse>() {
+            @Override
+            public void onResponse(@NonNull Call<RegisterResponse> call,
+                                   @NonNull Response<RegisterResponse> response) {
+                btnSubmitRegister.setEnabled(true);
+
+                if (response.isSuccessful() && response.body() != null) {
+                    String message = response.body().getMessage();
+                    if (response.body().getUpiId() != null) {
+                        message = message + "\nUPI: " + response.body().getUpiId();
+                    }
+                    Toast.makeText(FaceRegistrationActivity.this, message, Toast.LENGTH_LONG).show();
+
+                    Intent intent = new Intent(FaceRegistrationActivity.this, LoginActivity.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                    finish();
+                } else {
+                    String errorMessage = "Registration failed. Please recapture your face.";
+                    try {
+                        if (response.errorBody() != null) {
+                            errorMessage = response.errorBody().string();
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    Toast.makeText(
+                            FaceRegistrationActivity.this,
+                            errorMessage,
+                            Toast.LENGTH_LONG
+                    ).show();
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<RegisterResponse> call, @NonNull Throwable t) {
+                btnSubmitRegister.setEnabled(true);
+                Toast.makeText(
+                        FaceRegistrationActivity.this,
+                        "Network error: " + t.getMessage(),
+                        Toast.LENGTH_LONG
+                ).show();
+            }
+        });
+    }
+
+    private void saveCurrentPoseCapture(String faceBase64) {
+        if (currentCaptureStep == STEP_FRONT_FACE) {
+            frontFaceBase64 = faceBase64;
+            currentCaptureStep = STEP_LEFT_FACE;
+            showPosePopup("Step 2", "Turn your face LEFT and tap Capture Face.");
+            Toast.makeText(this, "Front face captured", Toast.LENGTH_SHORT).show();
+        } else if (currentCaptureStep == STEP_LEFT_FACE) {
+            leftFaceBase64 = faceBase64;
+            currentCaptureStep = STEP_RIGHT_FACE;
+            showPosePopup("Step 3", "Turn your face RIGHT and tap Capture Face.");
+            Toast.makeText(this, "Left face captured", Toast.LENGTH_SHORT).show();
+        } else {
+            rightFaceBase64 = faceBase64;
+            currentCaptureStep = STEP_DONE;
+            btnCaptureFace.setEnabled(false);
+            btnSubmitRegister.setEnabled(true);
+            showPosePopup("Done", "All face poses captured. Tap Verify & Register.");
+            Toast.makeText(this, "Right face captured", Toast.LENGTH_SHORT).show();
+        }
+
+        isValidFaceDetected = false;
+        refreshCaptureUi();
+    }
+
+    private void refreshCaptureUi() {
+        if (currentCaptureStep == STEP_FRONT_FACE) {
+            btnCaptureFace.setText("Capture Front Face");
+        } else if (currentCaptureStep == STEP_LEFT_FACE) {
+            btnCaptureFace.setText("Capture Left Face");
+        } else if (currentCaptureStep == STEP_RIGHT_FACE) {
+            btnCaptureFace.setText("Capture Right Face");
+        } else {
+            btnCaptureFace.setText("All Face Poses Captured");
+        }
+        tvFaceStatus.setText(getCurrentPoseInstruction());
+        if (currentCaptureStep == STEP_DONE) {
+            tvFaceStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark));
+        } else {
+            tvFaceStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
+        }
+    }
+
+    private String getCurrentPoseInstruction() {
+        if (currentCaptureStep == STEP_FRONT_FACE) {
+            return "Look straight at camera";
+        }
+        if (currentCaptureStep == STEP_LEFT_FACE) {
+            return "Turn left and align your face";
+        }
+        if (currentCaptureStep == STEP_RIGHT_FACE) {
+            return "Turn right and align your face";
+        }
+        return "All poses captured. Tap Verify & Register";
+    }
+
+    private String getCurrentPoseReadyMessage() {
+        if (currentCaptureStep == STEP_FRONT_FACE) {
+            return "Straight face aligned. Tap Capture Front Face";
+        }
+        if (currentCaptureStep == STEP_LEFT_FACE) {
+            return "Left pose ready. Tap Capture Left Face";
+        }
+        if (currentCaptureStep == STEP_RIGHT_FACE) {
+            return "Right pose ready. Tap Capture Right Face";
+        }
+        return "All poses captured. Tap Verify & Register";
+    }
+
+    private void showPosePopup(String title, String message) {
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
     }
 
     private Bitmap imageProxyToBitmap(ImageProxy imageProxy) {
@@ -468,93 +493,6 @@ public class RegisterActivity extends AppCompatActivity {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP);
-    }
-
-    private void registerUserWithFace() {
-        String username = getInputValue(etName);
-        String email = getInputValue(etEmail);
-        String mobile = getInputValue(etMobile);
-        String password = getInputValue(etPassword);
-        String upiPin = getInputValue(etUpiPin);
-        String balanceText = getInputValue(etBalance);
-
-        if (username.isEmpty() || email.isEmpty() || mobile.isEmpty()
-                || password.isEmpty() || upiPin.isEmpty() || balanceText.isEmpty()) {
-            Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (upiPin.length() != 4) {
-            Toast.makeText(this, "UPI PIN must be 4 digits", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (capturedFaceBase64 == null) {
-            Toast.makeText(this, "Please capture your face before registration", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        double balance;
-        try {
-            balance = Double.parseDouble(balanceText);
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Enter a valid balance", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        btnRegister.setEnabled(false);
-
-        ApiService apiService = ApiClient.getClient().create(ApiService.class);
-        RegisterRequest request = new RegisterRequest(
-                username,
-                email,
-                mobile,
-                password,
-                upiPin,
-                balance,
-                capturedFaceBase64
-        );
-
-        apiService.registerUser(request).enqueue(new Callback<RegisterResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<RegisterResponse> call,
-                                   @NonNull retrofit2.Response<RegisterResponse> response) {
-                btnRegister.setEnabled(true);
-
-                if (response.isSuccessful() && response.body() != null) {
-                    RegisterResponse body = response.body();
-                    String message = body.getMessage();
-
-                    if (body.getUpiId() != null && !body.getUpiId().isEmpty()) {
-                        message = message + "\nUPI: " + body.getUpiId();
-                    }
-
-                    Toast.makeText(RegisterActivity.this, message, Toast.LENGTH_LONG).show();
-                    startActivity(new Intent(RegisterActivity.this, LoginActivity.class));
-                    finish();
-                } else {
-                    Toast.makeText(
-                            RegisterActivity.this,
-                            "Registration failed. Check backend and face data.",
-                            Toast.LENGTH_LONG
-                    ).show();
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<RegisterResponse> call, @NonNull Throwable t) {
-                btnRegister.setEnabled(true);
-                Toast.makeText(
-                        RegisterActivity.this,
-                        "Network error: " + t.getMessage(),
-                        Toast.LENGTH_LONG
-                ).show();
-            }
-        });
-    }
-
-    private String getInputValue(TextInputEditText input) {
-        return input.getText() == null ? "" : input.getText().toString().trim();
     }
 
     @Override

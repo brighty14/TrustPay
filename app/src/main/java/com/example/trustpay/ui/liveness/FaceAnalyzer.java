@@ -20,15 +20,28 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
     public interface OnLivenessDetectedListener {
         void onLivenessDetected();
     }
+
+    public interface OnInstructionUpdateListener {
+        void onInstructionUpdate(String message);
+    }
+
     private OnLivenessDetectedListener listener;
+    private OnInstructionUpdateListener instructionListener;
     private boolean isCompleted = false;
 
     public FaceAnalyzer(OnLivenessDetectedListener listener) {
         this.listener = listener;
     }
 
+    public FaceAnalyzer(OnInstructionUpdateListener instructionListener,
+                        OnLivenessDetectedListener listener) {
+        this.instructionListener = instructionListener;
+        this.listener = listener;
+    }
+
     private boolean isBlinkDetected = false;
     private boolean isHeadTurnDetected = false;
+    private boolean isStraightFaceReady = false;
 
     FaceDetectorOptions options =
             new FaceDetectorOptions.Builder()
@@ -53,13 +66,17 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
             detector.process(image)
                     .addOnSuccessListener(faces -> {
 
+                        if (faces.isEmpty() && instructionListener != null && !isCompleted) {
+                            instructionListener.onInstructionUpdate("Show your face clearly");
+                        }
+
                         for (Face face : faces) {
 
                             // 👁️ Blink Detection
-                            float leftEye = face.getLeftEyeOpenProbability();
-                            float rightEye = face.getRightEyeOpenProbability();
+                            Float leftEye = face.getLeftEyeOpenProbability();
+                            Float rightEye = face.getRightEyeOpenProbability();
 
-                            if (leftEye < 0.4 && rightEye < 0.4) {
+                            if (leftEye != null && rightEye != null && leftEye < 0.4 && rightEye < 0.4) {
                                 isBlinkDetected = true;
                             }
 
@@ -70,8 +87,30 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
                                 isHeadTurnDetected = true;
                             }
 
+                            boolean eyesOpenNow = leftEye != null
+                                    && rightEye != null
+                                    && leftEye > 0.6
+                                    && rightEye > 0.6;
+                            boolean faceStraightNow = Math.abs(rotY) < 8;
+                            isStraightFaceReady = isBlinkDetected
+                                    && isHeadTurnDetected
+                                    && eyesOpenNow
+                                    && faceStraightNow;
+
+                            if (!isCompleted && instructionListener != null) {
+                                if (!isBlinkDetected) {
+                                    instructionListener.onInstructionUpdate("Blink your eyes");
+                                } else if (!isHeadTurnDetected) {
+                                    instructionListener.onInstructionUpdate("Turn your face left or right");
+                                } else if (!isStraightFaceReady) {
+                                    instructionListener.onInstructionUpdate("Look straight at camera");
+                                } else {
+                                    instructionListener.onInstructionUpdate("Liveness verified");
+                                }
+                            }
+
                             // ✅ Liveness Check
-                            if ((isBlinkDetected || isHeadTurnDetected) && !isCompleted) {
+                            if (isStraightFaceReady && !isCompleted) {
                                 isCompleted = true;
 
                                 Log.d("LIVENESS", "Liveness Verified ✅");
