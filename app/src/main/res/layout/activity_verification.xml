@@ -18,7 +18,7 @@
             android:text="Live Verification"
             android:textSize="26sp"
             android:textStyle="bold"
-            android:textColor="#1A237E"
+            android:textColor="#4A148C"
             android:layout_marginBottom="24dp"/>
 
         <!-- Camera Placeholder -->

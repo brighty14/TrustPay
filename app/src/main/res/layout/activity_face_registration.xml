@@ -17,7 +17,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#FFFDF8"
+            app:cardBackgroundColor="#FFFFFF"
             app:cardCornerRadius="32dp"
             app:cardElevation="12dp">
 
@@ -61,7 +61,7 @@
                     android:layout_height="160dp"
                     android:layout_gravity="center_horizontal"
                     android:layout_marginBottom="24dp"
-                    android:background="#FFF3D6"
+                    android:background="#F5F7FA"
                     android:contentDescription="Captured face preview"
                     android:scaleType="centerCrop"
                     android:src="@mipmap/ic_launcher" />
@@ -70,7 +70,7 @@
                     android:id="@+id/btnCaptureFaceRegister"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:backgroundTint="#FFC107"
+                    android:backgroundTint="#967BB6"
                     android:padding="14dp"
                     android:text="Capture Face"
                     android:textColor="#111111"
