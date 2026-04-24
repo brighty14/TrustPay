@@ -13,6 +13,8 @@
         android:usesCleartextTraffic="true">
 
         <!-- Activities -->
+        <activity android:name=".ui.admin.AdminUserProfileActivity" />
+        <activity android:name=".ui.admin.AdminDashboardActivity" />
         <activity android:name=".ui.fraud.SuspiciousActivityActivity" />
         <activity android:name=".ui.result.DeclineActivity" />
         <activity android:name=".ui.verification.PinActivity" />

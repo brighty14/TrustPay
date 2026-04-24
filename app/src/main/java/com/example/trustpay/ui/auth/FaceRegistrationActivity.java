@@ -90,6 +90,7 @@ public class FaceRegistrationActivity extends AppCompatActivity {
     private String password;
     private String upiPin;
     private double balance;
+    private String role;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,6 +109,7 @@ public class FaceRegistrationActivity extends AppCompatActivity {
         password = getIntent().getStringExtra("password");
         upiPin = getIntent().getStringExtra("upi_pin");
         balance = Double.parseDouble(getIntent().getStringExtra("balance"));
+        role = getIntent().getStringExtra("role");
 
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
@@ -312,7 +314,8 @@ public class FaceRegistrationActivity extends AppCompatActivity {
                 balance,
                 frontFaceBase64,
                 leftFaceBase64,
-                rightFaceBase64
+                rightFaceBase64,
+                role
         );
 
         ApiService apiService = ApiClient.getClient().create(ApiService.class);

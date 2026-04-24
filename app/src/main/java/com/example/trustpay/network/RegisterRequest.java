@@ -13,6 +13,7 @@ public class RegisterRequest {
     private final String front_face_image;
     private final String left_face_image;
     private final String right_face_image;
+    private final String role;
 
     public RegisterRequest(
             String username,
@@ -21,7 +22,8 @@ public class RegisterRequest {
             String password,
             String upiPin,
             double balance,
-            String faceImage
+            String faceImage,
+            String role
     ) {
         this.username = username;
         this.name = username;
@@ -34,6 +36,7 @@ public class RegisterRequest {
         this.front_face_image = faceImage;
         this.left_face_image = faceImage;
         this.right_face_image = faceImage;
+        this.role = role;
     }
 
     public RegisterRequest(
@@ -45,7 +48,8 @@ public class RegisterRequest {
             double balance,
             String frontFaceImage,
             String leftFaceImage,
-            String rightFaceImage
+            String rightFaceImage,
+            String role
     ) {
         this.username = username;
         this.name = username;
@@ -58,5 +62,6 @@ public class RegisterRequest {
         this.front_face_image = frontFaceImage;
         this.left_face_image = leftFaceImage;
         this.right_face_image = rightFaceImage;
+        this.role = role;
     }
 }

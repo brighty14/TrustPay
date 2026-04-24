@@ -13,6 +13,7 @@ import android.media.Image;
 import android.os.Bundle;
 import android.util.Base64;
 import android.widget.ImageView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -71,6 +72,7 @@ public class RegisterActivity extends AppCompatActivity {
     private static final float CENTER_TOLERANCE_RATIO = 0.18f;
 
     TextInputEditText etName, etEmail, etMobile, etPassword, etUpiPin, etBalance;
+    Spinner spinnerRole;
     PreviewView previewView;
     ImageView ivFacePreview;
     TextView tvFaceStatus;
@@ -97,6 +99,7 @@ public class RegisterActivity extends AppCompatActivity {
         etPassword = findViewById(R.id.etPassword);
         etUpiPin = findViewById(R.id.etUpiPin);
         etBalance = findViewById(R.id.etBalance); // ✅ NEW
+        spinnerRole = findViewById(R.id.spinnerRole);
 
         btnRegister = findViewById(R.id.btnRegister);
 
@@ -167,6 +170,7 @@ public class RegisterActivity extends AppCompatActivity {
         intent.putExtra("password", password);
         intent.putExtra("upi_pin", upiPin);
         intent.putExtra("balance", balanceText);
+        intent.putExtra("role", spinnerRole.getSelectedItem().toString().toLowerCase());
         startActivity(intent);
     }
 
@@ -513,7 +517,8 @@ public class RegisterActivity extends AppCompatActivity {
                 password,
                 upiPin,
                 balance,
-                capturedFaceBase64
+                capturedFaceBase64,
+                spinnerRole.getSelectedItem().toString().toLowerCase()
         );
 
         apiService.registerUser(request).enqueue(new Callback<RegisterResponse>() {

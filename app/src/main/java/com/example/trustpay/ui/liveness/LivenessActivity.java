@@ -59,6 +59,7 @@ public class LivenessActivity extends AppCompatActivity {
     boolean isFaceVerificationRunning = false;
 
     String VERIFY_FACE_URL = BackendConfig.endpoint("verify-face");
+    String FAILED_TRANSACTION_URL = BackendConfig.endpoint("failed-transaction");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -161,7 +162,7 @@ public class LivenessActivity extends AppCompatActivity {
                             startActivity(intent);
                             finish();
                         } else {
-                            goToDecline("Face does not match registered user");
+                            logFailedTransactionAndDecline("Face does not match registered user");
                         }
                     },
                     error -> {
@@ -170,7 +171,7 @@ public class LivenessActivity extends AppCompatActivity {
                         if (error.networkResponse != null && error.networkResponse.data != null) {
                             message = new String(error.networkResponse.data);
                         }
-                        goToDecline(message);
+                        logFailedTransactionAndDecline(message);
                     }) {
                 @Override
                 public Map<String, String> getHeaders() {
@@ -183,7 +184,28 @@ public class LivenessActivity extends AppCompatActivity {
             queue.add(request);
         } catch (Exception e) {
             isFaceVerificationRunning = false;
-            goToDecline("Face verification error");
+            logFailedTransactionAndDecline("Face verification error");
+        }
+    }
+
+    private void logFailedTransactionAndDecline(String reason) {
+        try {
+            JSONObject jsonBody = new JSONObject();
+            jsonBody.put("sender_upi", senderUpi);
+            jsonBody.put("receiver_upi", receiverUpi);
+            jsonBody.put("amount", amount);
+
+            RequestQueue queue = Volley.newRequestQueue(this);
+            JsonObjectRequest request = new JsonObjectRequest(
+                    Request.Method.POST,
+                    FAILED_TRANSACTION_URL,
+                    jsonBody,
+                    response -> goToDecline(reason),
+                    error -> goToDecline(reason)
+            );
+            queue.add(request);
+        } catch (Exception e) {
+            goToDecline(reason);
         }
     }
 

@@ -6,6 +6,7 @@ import numpy as np
 from pymongo import MongoClient
 import random
 from datetime import datetime
+from scipy.spatial.distance import cosine
 
 try:
     from keras_facenet import FaceNet
@@ -123,11 +124,13 @@ def cosine_similarity(first_embedding, second_embedding):
     if first_vector.shape != second_vector.shape:
         return None
 
-    denominator = np.linalg.norm(first_vector) * np.linalg.norm(second_vector)
-    if denominator == 0:
+    try:
+        dist = cosine(first_vector, second_vector)
+        if np.isnan(dist):
+            return None
+        return 1 - dist
+    except Exception as e:
         return None
-
-    return float(np.dot(first_vector, second_vector) / denominator)
 
 
 # -------------------------------
@@ -206,6 +209,7 @@ def register():
         "balance": balance,
         "face_embedding": front_embedding,
         "face_embeddings": [front_embedding, left_embedding, right_embedding],
+        "role": data.get("role", "user"),
         "created_at": datetime.utcnow()
     }
 
@@ -250,7 +254,8 @@ def login():
         "email": user["email"],
         "mobile": user["mobile"],
         "upi": user["upi_id"],
-        "balance": user.get("balance", 0)
+        "balance": user.get("balance", 0),
+        "role": user.get("role", "user")
     }), 200
 
 
@@ -350,6 +355,20 @@ def verify_face():
 
 
 # -------------------------------
+# Risk Scoring Logic
+# -------------------------------
+def calculate_risk(sender_upi):
+    past_anomalies = transactions.count_documents({"sender_upi": sender_upi, "is_anomaly": True})
+    risk_score = min(past_anomalies * 25, 100)
+    if risk_score >= 80:
+        risk_level = "High"
+    elif risk_score >= 50:
+        risk_level = "Medium"
+    else:
+        risk_level = "Low"
+    return risk_score, risk_level
+
+# -------------------------------
 # Transaction API
 # -------------------------------
 @app.route("/transaction", methods=["POST"])
@@ -409,12 +428,17 @@ def make_transaction():
         {"$inc": {"balance": float(amount)}}
     )
 
+    risk_score, risk_level = calculate_risk(sender_upi)
+
     transaction = {
         "sender_upi": sender_upi,
         "receiver_upi": receiver_upi,
         "amount": float(amount),
         "timestamp": datetime.now(),
-        "status": "SUCCESS"
+        "status": "SUCCESS",
+        "is_anomaly": False,
+        "risk_score": risk_score,
+        "risk_level": risk_level
     }
 
     transactions.insert_one(transaction)
@@ -448,6 +472,10 @@ def history():
     result = []
 
     for t in user_transactions:
+        # 3-sigma rule should only consider SUCCESSFUL transactions
+        if t.get("status", "SUCCESS") != "SUCCESS":
+            continue
+            
         result.append({
             "amount": float(t.get("amount", 0)),
             "type": "SENT" if t["sender_upi"] == upi else "RECEIVED"
@@ -468,16 +496,150 @@ def transactions_by_upi(upi_id):
 
     result = []
     for t in user_transactions:
+        status = t.get("status", "SUCCESS")
+        
+        # Only the sender should see FAILED transactions. If the user is the receiver, skip it.
+        if status == "FAILED" and t.get("receiver_upi") == upi_id:
+            continue
+            
         result.append({
             "sender_upi": t.get("sender_upi", ""),
             "receiver_upi": t.get("receiver_upi", ""),
             "amount": float(t.get("amount", 0)),
-            "status": t.get("status", "SUCCESS"),
+            "status": status,
             "timestamp": t.get("timestamp", datetime.now()).strftime("%d %b %Y %I:%M %p")
         })
 
     return jsonify(result), 200
 
+# -------------------------------
+# Admin Dashboard API
+# -------------------------------
+@app.route("/admin/dashboard-data", methods=["GET"])
+def admin_dashboard_data():
+    all_transactions = list(transactions.find({}).sort("timestamp", -1))
+    
+    result = []
+    normal_count = 0
+    anomaly_count = 0
+    
+    for t in all_transactions:
+        is_anomaly = t.get("is_anomaly", False)
+        if is_anomaly:
+            anomaly_count += 1
+        else:
+            normal_count += 1
+            
+        result.append({
+            "sender_upi": t.get("sender_upi", ""),
+            "receiver_upi": t.get("receiver_upi", ""),
+            "amount": float(t.get("amount", 0)),
+            "status": t.get("status", "SUCCESS"),
+            "timestamp": t.get("timestamp", datetime.now()).strftime("%d %b %Y %I:%M %p"),
+            "is_anomaly": is_anomaly,
+            "risk_score": t.get("risk_score", 0),
+            "risk_level": t.get("risk_level", "Low")
+        })
+        
+    # Generate simple alerts based on recent anomalies
+    alerts = []
+    if anomaly_count > 0:
+        alerts.append(f"{anomaly_count} total anomalies detected in the system.")
+    else:
+        alerts.append("System is running smoothly. No recent anomalies.")
+        
+    fraud_rate = 0
+    total_txns = len(all_transactions)
+    if total_txns > 0:
+        fraud_rate = round((anomaly_count / total_txns) * 100, 2)
+        
+    return jsonify({
+        "transactions": result,
+        "normal_count": normal_count,
+        "anomaly_count": anomaly_count,
+        "total_txns_today": total_txns,
+        "fraud_rate": fraud_rate,
+        "alerts": alerts
+    }), 200
+
+# -------------------------------
+# Log Failed Transaction API
+# -------------------------------
+@app.route("/failed-transaction", methods=["POST"])
+def failed_transaction():
+    data = request.get_json()
+    if not data:
+        return jsonify({"message": "No data received"}), 400
+
+    sender_upi = data.get("sender_upi")
+    receiver_upi = data.get("receiver_upi")
+    amount = data.get("amount")
+    
+    if not all([sender_upi, receiver_upi, amount]):
+        return jsonify({"message": "Missing required fields"}), 400
+
+    risk_score, risk_level = calculate_risk(sender_upi)
+    # Give an immediate bump because they just failed
+    risk_score = min(risk_score + 25, 100)
+    if risk_score >= 80:
+        risk_level = "High"
+    elif risk_score >= 50:
+        risk_level = "Medium"
+    else:
+        risk_level = "Low"
+
+    transaction = {
+        "sender_upi": sender_upi,
+        "receiver_upi": receiver_upi,
+        "amount": float(amount),
+        "timestamp": datetime.now(),
+        "status": "FAILED",
+        "is_anomaly": True,
+        "risk_score": risk_score,
+        "risk_level": risk_level
+    }
+    transactions.insert_one(transaction)
+
+    return jsonify({"success": True, "message": "Failed transaction logged"}), 200
+
+# -------------------------------
+# Admin User Profile API
+# -------------------------------
+@app.route("/admin/user-profile/<upi_id>", methods=["GET"])
+def admin_user_profile(upi_id):
+    user = users.find_one({"upi_id": upi_id})
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+        
+    user_txns = list(transactions.find({"sender_upi": upi_id}).sort("timestamp", -1))
+    
+    total_txns = len(user_txns)
+    anomalies = sum(1 for t in user_txns if t.get("is_anomaly", False))
+    
+    risk_score, risk_level = calculate_risk(upi_id)
+    
+    recent_txns = []
+    for t in user_txns[:10]: # Return top 10 recent
+        recent_txns.append({
+            "receiver_upi": t.get("receiver_upi", ""),
+            "amount": float(t.get("amount", 0)),
+            "status": t.get("status", "SUCCESS"),
+            "timestamp": t.get("timestamp", datetime.now()).strftime("%d %b %Y %I:%M %p"),
+            "is_anomaly": t.get("is_anomaly", False),
+            "risk_level": t.get("risk_level", "Low")
+        })
+
+    return jsonify({
+        "name": user.get("name", ""),
+        "mobile": user.get("mobile", ""),
+        "email": user.get("email", ""),
+        "upi_id": user.get("upi_id", ""),
+        "total_txns": total_txns,
+        "anomalies": anomalies,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "recent_txns": recent_txns
+    }), 200
 
 # -------------------------------
 # Balance API
