@@ -16,19 +16,33 @@ import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
 
 public class FaceAnalyzer implements ImageAnalysis.Analyzer {
+    private static final int LOW_LIGHT_LUMA_THRESHOLD = 72;
 
     public interface OnLivenessDetectedListener {
         void onLivenessDetected();
     }
+
+    public interface OnInstructionUpdateListener {
+        void onInstructionUpdate(String message);
+    }
+
     private OnLivenessDetectedListener listener;
+    private OnInstructionUpdateListener instructionListener;
     private boolean isCompleted = false;
 
     public FaceAnalyzer(OnLivenessDetectedListener listener) {
         this.listener = listener;
     }
 
+    public FaceAnalyzer(OnInstructionUpdateListener instructionListener,
+                        OnLivenessDetectedListener listener) {
+        this.instructionListener = instructionListener;
+        this.listener = listener;
+    }
+
     private boolean isBlinkDetected = false;
     private boolean isHeadTurnDetected = false;
+    private boolean isStraightFaceReady = false;
 
     FaceDetectorOptions options =
             new FaceDetectorOptions.Builder()
@@ -46,6 +60,7 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
         Image mediaImage = imageProxy.getImage();
 
         if (mediaImage != null) {
+            boolean lowLightFrame = calculateAverageLuma(mediaImage) < LOW_LIGHT_LUMA_THRESHOLD;
             InputImage image =
                     InputImage.fromMediaImage(mediaImage,
                             imageProxy.getImageInfo().getRotationDegrees());
@@ -53,25 +68,59 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
             detector.process(image)
                     .addOnSuccessListener(faces -> {
 
+                        if (faces.isEmpty() && instructionListener != null && !isCompleted) {
+                            instructionListener.onInstructionUpdate(lowLightFrame
+                                    ? "Low light detected. Face a brighter light"
+                                    : "Show your face clearly");
+                        }
+
                         for (Face face : faces) {
 
                             // 👁️ Blink Detection
-                            float leftEye = face.getLeftEyeOpenProbability();
-                            float rightEye = face.getRightEyeOpenProbability();
+                            Float leftEye = face.getLeftEyeOpenProbability();
+                            Float rightEye = face.getRightEyeOpenProbability();
 
-                            if (leftEye < 0.4 && rightEye < 0.4) {
+                            if (leftEye != null && rightEye != null && leftEye < 0.4 && rightEye < 0.4) {
                                 isBlinkDetected = true;
                             }
 
                             // 🔄 Head Turn Detection
                             float rotY = face.getHeadEulerAngleY();
 
-                            if (Math.abs(rotY) > 15) {
+                            if (Math.abs(rotY) > (lowLightFrame ? 8 : 15)) {
                                 isHeadTurnDetected = true;
                             }
 
+                            boolean eyesOpenNow = lowLightFrame
+                                    || (leftEye != null
+                                    && rightEye != null
+                                    && leftEye > 0.6
+                                    && rightEye > 0.6);
+                            boolean faceStraightNow = Math.abs(rotY) < (lowLightFrame ? 14 : 8);
+                            isStraightFaceReady = isBlinkDetected
+                                    && isHeadTurnDetected
+                                    && eyesOpenNow
+                                    && faceStraightNow;
+
+                            if (!isCompleted && instructionListener != null) {
+                                if (lowLightFrame && !isStraightFaceReady) {
+                                    instructionListener.onInstructionUpdate(getLowLightInstruction(
+                                            isBlinkDetected,
+                                            isHeadTurnDetected
+                                    ));
+                                } else if (!isBlinkDetected) {
+                                    instructionListener.onInstructionUpdate("Blink your eyes");
+                                } else if (!isHeadTurnDetected) {
+                                    instructionListener.onInstructionUpdate("Turn your face left or right");
+                                } else if (!isStraightFaceReady) {
+                                    instructionListener.onInstructionUpdate("Look straight at camera");
+                                } else {
+                                    instructionListener.onInstructionUpdate("Liveness verified");
+                                }
+                            }
+
                             // ✅ Liveness Check
-                            if ((isBlinkDetected || isHeadTurnDetected) && !isCompleted) {
+                            if (isStraightFaceReady && !isCompleted) {
                                 isCompleted = true;
 
                                 Log.d("LIVENESS", "Liveness Verified ✅");
@@ -83,6 +132,35 @@ public class FaceAnalyzer implements ImageAnalysis.Analyzer {
                         }
                     })
                     .addOnCompleteListener(task -> imageProxy.close());
+        } else {
+            imageProxy.close();
         }
+    }
+
+    private String getLowLightInstruction(boolean blinkDetected, boolean headTurnDetected) {
+        if (!blinkDetected) {
+            return "Low light detected. Face a brighter light and blink";
+        }
+        if (!headTurnDetected) {
+            return "Low light detected. Slowly turn your face";
+        }
+        return "Low light detected. Hold still and look straight";
+    }
+
+    private int calculateAverageLuma(Image image) {
+        java.nio.ByteBuffer buffer = image.getPlanes()[0].getBuffer().duplicate();
+        int remaining = buffer.remaining();
+        if (remaining <= 0) {
+            return 255;
+        }
+
+        long sum = 0;
+        int sampleCount = 0;
+        int step = Math.max(1, remaining / 1200);
+        for (int i = 0; i < remaining; i += step) {
+            sum += buffer.get(i) & 0xFF;
+            sampleCount++;
+        }
+        return sampleCount == 0 ? 255 : (int) (sum / sampleCount);
     }
 }

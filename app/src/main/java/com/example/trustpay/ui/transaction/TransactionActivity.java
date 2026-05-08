@@ -2,145 +2,137 @@ package com.example.trustpay.ui.transaction;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.widget.Button;
-import android.widget.EditText;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
-import com.android.volley.toolbox.JsonArrayRequest;
+import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.example.trustpay.R;
-import com.example.trustpay.ui.fraud.SuspiciousActivityActivity;
-import com.example.trustpay.ui.verification.PinActivity;
-import com.example.trustpay.utils.FraudDetector;
+import com.example.trustpay.network.BackendConfig;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.textfield.TextInputEditText;
 
 import org.json.JSONObject;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class TransactionActivity extends AppCompatActivity {
 
-    EditText editTextAmount;
-    EditText editTextReceiverUpi;
-    Button btnPay;
-    String senderUpi;
-    String receiverUpi;
+    TextInputEditText editTextReceiverUpi;
+    MaterialCardView cardReceiverResult;
+    TextView tvReceiverName, tvReceiverDetails, tvLookupStatus;
 
-
-    String HISTORY_URL = "http://10.228.6.76:5000/history";
+    private final Handler lookupHandler = new Handler(Looper.getMainLooper());
+    private RequestQueue queue;
+    private String senderUpi;
+    private String receiverName;
+    private String receiverMobile;
+    private String receiverUpi;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_transaction);
 
-        //Toast.makeText(this, "Sender UPI: " + senderUpi, Toast.LENGTH_LONG).show();
-        editTextAmount = findViewById(R.id.editTextAmount);
         editTextReceiverUpi = findViewById(R.id.editTextReceiverUpi);
-        btnPay = findViewById(R.id.btnPay);
+        cardReceiverResult = findViewById(R.id.cardReceiverResult);
+        tvReceiverName = findViewById(R.id.tvReceiverName);
+        tvReceiverDetails = findViewById(R.id.tvReceiverDetails);
+        tvLookupStatus = findViewById(R.id.tvLookupStatus);
+
+        queue = Volley.newRequestQueue(this);
         senderUpi = getIntent().getStringExtra("upi");
-        if (senderUpi == null) {
-            Toast.makeText(this, "UPI not received", Toast.LENGTH_LONG).show();
-            senderUpi = "test@upi"; // fallback
-        }
-        btnPay.setOnClickListener(v -> {
 
-            String amountStr = editTextAmount.getText().toString();
+        cardReceiverResult.setVisibility(View.GONE);
+        tvLookupStatus.setText("");
 
-            if (amountStr.isEmpty()) {
-                editTextAmount.setError("Enter amount");
-                return;
+        editTextReceiverUpi.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
             }
 
-            double amount = Double.parseDouble(amountStr);
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                lookupHandler.removeCallbacksAndMessages(null);
+                cardReceiverResult.setVisibility(View.GONE);
 
-            // 🔥 Call backend
-            fetchTransactionHistory(amount);
-            receiverUpi = editTextReceiverUpi.getText().toString().trim();
+                String input = s.toString().trim();
+                if (input.length() < 4) {
+                    tvLookupStatus.setText("");
+                    return;
+                }
 
-            if (receiverUpi.isEmpty()) {
-                editTextReceiverUpi.setError("Enter receiver UPI");
-                return;
+                tvLookupStatus.setText("Finding receiver...");
+                lookupHandler.postDelayed(() -> lookupReceiver(input), 500);
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
             }
         });
 
-
+        cardReceiverResult.setOnClickListener(v -> openPaymentPage());
     }
 
-    private void fetchTransactionHistory(double amount) {
+    private void lookupReceiver(String input) {
+        try {
+            String encodedInput = URLEncoder.encode(input, StandardCharsets.UTF_8.name());
+            String url = BackendConfig.endpoint("receiver/" + encodedInput);
 
-        RequestQueue queue = Volley.newRequestQueue(this);
-
-        String url = HISTORY_URL + "?upi=" + senderUpi;
-
-        JsonArrayRequest request = new JsonArrayRequest(
-                Request.Method.GET,
-                url,
-                null,
-
-                response -> {
-                    try {
-
-                        List<Double> history = new ArrayList<>();
-
-                        for (int i = 0; i < response.length(); i++) {
-                            JSONObject obj = response.getJSONObject(i);
-
-                            double amt = obj.getDouble("amount");
-                            String type = obj.getString("type");
-
-                            if (type.equalsIgnoreCase("SENT")) {
-                                history.add(amt);
-                            }
-                        }
-
-                        // 🔥 IMPORTANT: Handle empty history
-                        if (history.isEmpty()) {
-                            Toast.makeText(this, "No transaction history found", Toast.LENGTH_SHORT).show();
-
-                            goToPin(amount);
-                            return;
-                        }
-
-                        boolean isFraud = FraudDetector.isTransactionSuspicious(history, amount);
-
-                        if (isFraud) {
-                            Intent intent = new Intent(TransactionActivity.this, SuspiciousActivityActivity.class);
-                            intent.putExtra("amount", amount);
-                            startActivity(intent);
-                        } else {
-                            goToPin(amount);
-                        }
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        Toast.makeText(this, "Error processing data", Toast.LENGTH_SHORT).show();
+            JsonObjectRequest request = new JsonObjectRequest(
+                    Request.Method.GET,
+                    url,
+                    null,
+                    response -> showReceiver(response),
+                    error -> {
+                        receiverUpi = null;
+                        cardReceiverResult.setVisibility(View.GONE);
+                        tvLookupStatus.setText("Receiver not found");
                     }
-                },
+            );
 
-                error -> {
-                    error.printStackTrace();
-
-                    Toast.makeText(this, "Server error. Try again.", Toast.LENGTH_LONG).show();
-                }
-        );
-
-        queue.add(request);
+            queue.add(request);
+        } catch (Exception e) {
+            Toast.makeText(this, "Unable to search receiver", Toast.LENGTH_SHORT).show();
+        }
     }
 
-    // 🔥 Clean reusable method
-    private void goToPin(double amount) {
+    private void showReceiver(JSONObject response) {
+        if (!response.optBoolean("success", false)) {
+            tvLookupStatus.setText("Receiver not found");
+            cardReceiverResult.setVisibility(View.GONE);
+            return;
+        }
 
-        Intent intent = new Intent(TransactionActivity.this, PinActivity.class);
+        receiverName = response.optString("name");
+        receiverMobile = response.optString("mobile");
+        receiverUpi = response.optString("upi");
 
+        tvReceiverName.setText(receiverName);
+        tvReceiverDetails.setText(receiverMobile + " | " + receiverUpi);
+        tvLookupStatus.setText("Tap receiver to pay");
+        cardReceiverResult.setVisibility(View.VISIBLE);
+    }
+
+    private void openPaymentPage() {
+        if (receiverUpi == null || receiverUpi.isEmpty()) {
+            Toast.makeText(this, "Select a valid receiver", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Intent intent = new Intent(TransactionActivity.this, PaymentActivity.class);
         intent.putExtra("sender_upi", senderUpi);
+        intent.putExtra("receiver_name", receiverName);
+        intent.putExtra("receiver_mobile", receiverMobile);
         intent.putExtra("receiver_upi", receiverUpi);
-        intent.putExtra("amount", String.valueOf(amount));
-
         startActivity(intent);
     }
 }

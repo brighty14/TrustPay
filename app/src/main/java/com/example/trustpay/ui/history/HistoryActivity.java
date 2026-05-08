@@ -10,12 +10,19 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.trustpay.R;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.toolbox.JsonArrayRequest;
 import com.android.volley.toolbox.Volley;
+import com.example.trustpay.network.BackendConfig;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -24,6 +31,9 @@ import android.util.Log;
 import android.widget.Toast;
 
 public class HistoryActivity extends AppCompatActivity {
+
+    private static final SimpleDateFormat HISTORY_TIMESTAMP_FORMAT =
+            new SimpleDateFormat("dd MMM yyyy hh:mm a", Locale.ENGLISH);
 
     RecyclerView recyclerView;
     HistoryAdapter adapter;
@@ -61,7 +71,7 @@ public class HistoryActivity extends AppCompatActivity {
             return;
         }
 
-        String url = "http://10.0.2.2:5000/transactions/" + upiId;
+        String url = BackendConfig.endpoint("transactions/" + upiId);
 
         RequestQueue queue = Volley.newRequestQueue(this);
 
@@ -92,6 +102,26 @@ public class HistoryActivity extends AppCompatActivity {
                         }
                     }
 
+                    Collections.sort(transactionList, new Comparator<Transaction>() {
+                        @Override
+                        public int compare(Transaction first, Transaction second) {
+                            Date firstDate = parseHistoryTimestamp(first.getTimestamp());
+                            Date secondDate = parseHistoryTimestamp(second.getTimestamp());
+
+                            if (firstDate == null && secondDate == null) {
+                                return 0;
+                            }
+                            if (firstDate == null) {
+                                return 1;
+                            }
+                            if (secondDate == null) {
+                                return -1;
+                            }
+
+                            return secondDate.compareTo(firstDate);
+                        }
+                    });
+
                     adapter.notifyDataSetChanged();
 
                     if (transactionList.isEmpty()) {
@@ -105,5 +135,14 @@ public class HistoryActivity extends AppCompatActivity {
         );
 
         queue.add(request);
+    }
+
+    private Date parseHistoryTimestamp(String timestamp) {
+        try {
+            return HISTORY_TIMESTAMP_FORMAT.parse(timestamp);
+        } catch (ParseException e) {
+            Log.w("HistoryActivity", "Unable to parse transaction timestamp: " + timestamp, e);
+            return null;
+        }
     }
 }

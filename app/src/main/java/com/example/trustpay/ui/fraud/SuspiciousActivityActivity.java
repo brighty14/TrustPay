@@ -13,8 +13,9 @@ public class SuspiciousActivityActivity extends AppCompatActivity {
 
     Button btnVerify, btnCancel;
 
-    String receiver;
-    double amount;
+    String senderUpi;
+    String receiverUpi;
+    String amount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,15 +26,17 @@ public class SuspiciousActivityActivity extends AppCompatActivity {
         btnCancel = findViewById(R.id.btnCancel);
 
         // ✅ Get data INSIDE onCreate
-        receiver = getIntent().getStringExtra("receiver");
-        amount = getIntent().getDoubleExtra("amount", 0);
+        senderUpi = getIntent().getStringExtra("sender_upi");
+        receiverUpi = getIntent().getStringExtra("receiver_upi");
+        amount = getIntent().getStringExtra("amount");
 
         btnVerify.setOnClickListener(v -> {
 
             Intent intent = new Intent(this, LivenessActivity.class);
 
             // ✅ Pass data forward
-            intent.putExtra("receiver", receiver);
+            intent.putExtra("sender_upi", senderUpi);
+            intent.putExtra("receiver_upi", receiverUpi);
             intent.putExtra("amount", amount);
 
             

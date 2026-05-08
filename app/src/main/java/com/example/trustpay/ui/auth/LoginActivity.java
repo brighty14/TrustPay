@@ -13,6 +13,8 @@ import com.android.volley.RequestQueue;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.example.trustpay.R;
+import com.example.trustpay.network.BackendConfig;
+import com.example.trustpay.ui.admin.AdminDashboardActivity;
 import com.example.trustpay.ui.dashboard.DashboardActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -25,11 +27,27 @@ public class LoginActivity extends AppCompatActivity {
     MaterialButton btnLogin;
     TextView tvRegister;
 
-    String LOGIN_URL = "http://10.228.6.76:5000/login";
+    String LOGIN_URL = BackendConfig.endpoint("login");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        SharedPreferences savedSession = getSharedPreferences("user_data", MODE_PRIVATE);
+        if (savedSession.getBoolean("is_logged_in", false)) {
+            String role = savedSession.getString("role", "user");
+            Intent intent;
+            if ("admin".equalsIgnoreCase(role)) {
+                intent = new Intent(LoginActivity.this, AdminDashboardActivity.class);
+            } else {
+                intent = new Intent(LoginActivity.this, DashboardActivity.class);
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
         setContentView(R.layout.activity_login);
 
         etEmail = findViewById(R.id.etEmail);
@@ -79,9 +97,15 @@ public class LoginActivity extends AppCompatActivity {
 
                         // ✅ FIXED KEY
                         String upi = response.optString("upi");
-                        Toast.makeText(this, "Login UPI: " + upi, Toast.LENGTH_LONG).show();
+                        String role = response.optString("role", "user");
 
-                        Intent intent = new Intent(LoginActivity.this, DashboardActivity.class);
+                        Intent intent;
+                        if ("admin".equalsIgnoreCase(role)) {
+                            intent = new Intent(LoginActivity.this, AdminDashboardActivity.class);
+                        } else {
+                            intent = new Intent(LoginActivity.this, DashboardActivity.class);
+                        }
+                        
                         intent.putExtra("name", name);
                         intent.putExtra("email", userEmail);
                         intent.putExtra("mobile", mobile);
@@ -94,9 +118,12 @@ public class LoginActivity extends AppCompatActivity {
                         editor.putString("email", userEmail);
                         editor.putString("mobile", mobile);
                         editor.putString("upi", upi);
+                        editor.putString("role", role);
+                        editor.putBoolean("is_logged_in", true);
 
                         editor.apply();
 
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                         startActivity(intent);
                         finish();
                     },

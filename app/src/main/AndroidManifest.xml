@@ -13,14 +13,19 @@
         android:usesCleartextTraffic="true">
 
         <!-- Activities -->
+        <activity android:name=".ui.admin.AdminUserProfileActivity" />
+        <activity android:name=".ui.admin.AdminDashboardActivity" />
         <activity android:name=".ui.fraud.SuspiciousActivityActivity" />
         <activity android:name=".ui.result.DeclineActivity" />
         <activity android:name=".ui.verification.PinActivity" />
         <activity android:name=".ui.profile.ProfileActivity" />
         <activity android:name=".ui.history.HistoryActivity" />
+        <activity android:name=".ui.auth.FaceRegistrationActivity" />
         <activity android:name=".ui.auth.RegisterActivity" />
         <activity android:name=".ui.result.ResultActivity" />
         <activity android:name=".ui.verification.VerificationActivity" />
+        <activity android:name=".ui.transaction.QrScannerActivity" />
+        <activity android:name=".ui.transaction.PaymentActivity" />
         <activity android:name=".ui.transaction.TransactionActivity" />
         <activity android:name=".ui.dashboard.DashboardActivity" />
         <activity android:name=".ui.liveness.LivenessActivity" />

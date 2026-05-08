@@ -7,6 +7,7 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.trustpay.R;
@@ -30,6 +31,7 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     public static class ViewHolder extends RecyclerView.ViewHolder {
 
         TextView tvAmount, tvStatus, tvDate, tvReceiver;
+        CardView cardView;
 
         public ViewHolder(View itemView) {
             super(itemView);
@@ -38,6 +40,7 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
             tvStatus = itemView.findViewById(R.id.tvStatus);
             tvDate = itemView.findViewById(R.id.tvDate);
             tvReceiver = itemView.findViewById(R.id.tvReceiver);
+            cardView = itemView.findViewById(R.id.cardTransaction);
         }
     }
 
@@ -78,6 +81,20 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
 
             holder.tvAmount.setTextColor(android.graphics.Color.parseColor("#388E3C")); // green
             holder.tvStatus.setTextColor(android.graphics.Color.parseColor("#388E3C"));
+        }
+
+        // FAILED transaction styling
+        if ("FAILED".equals(t.getStatus())) {
+            holder.cardView.setCardBackgroundColor(android.graphics.Color.parseColor("#D32F2F")); // Solid red background
+            holder.tvStatus.setText("❌ Failed");
+            holder.tvStatus.setTextColor(android.graphics.Color.WHITE);
+            holder.tvAmount.setTextColor(android.graphics.Color.WHITE);
+            holder.tvDate.setTextColor(android.graphics.Color.parseColor("#FFEBEE")); // Lighter text for date
+            holder.tvReceiver.setTextColor(android.graphics.Color.WHITE);
+        } else {
+            holder.cardView.setCardBackgroundColor(android.graphics.Color.parseColor("#F3E5F5")); // Light purple default
+            holder.tvDate.setTextColor(android.graphics.Color.parseColor("#757575")); // Restore date color
+            holder.tvReceiver.setTextColor(android.graphics.Color.parseColor("#333333")); // Restore receiver color
         }
     }
 

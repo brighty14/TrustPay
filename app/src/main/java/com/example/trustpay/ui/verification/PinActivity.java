@@ -14,6 +14,7 @@ import com.android.volley.RequestQueue;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.example.trustpay.R;
+import com.example.trustpay.network.BackendConfig;
 import com.example.trustpay.ui.result.ResultActivity;
 import com.example.trustpay.ui.result.DeclineActivity;
 
@@ -30,7 +31,7 @@ public class PinActivity extends AppCompatActivity {
 
     ProgressDialog progressDialog;
 
-    String BASE_URL = "http://10.228.6.76:5000/transaction";
+    String BASE_URL = BackendConfig.endpoint("transaction");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -118,7 +119,7 @@ public class PinActivity extends AppCompatActivity {
                         progressDialog.dismiss();
 
                         String errorMsg = error.networkResponse != null
-                                ? new String(error.networkResponse.data)
+                                ? getBackendErrorMessage(new String(error.networkResponse.data))
                                 : error.toString();
 
                         Intent intent = new Intent(PinActivity.this, DeclineActivity.class);
@@ -143,5 +144,22 @@ public class PinActivity extends AppCompatActivity {
                 .setMessage(message)
                 .setPositiveButton("Close", (dialog, which) -> dialog.dismiss())
                 .show();
+    }
+
+    private String getBackendErrorMessage(String errorBody) {
+        if (errorBody == null || errorBody.trim().isEmpty()) {
+            return "Transaction Failed";
+        }
+
+        try {
+            JSONObject jsonObject = new JSONObject(errorBody);
+            String message = jsonObject.optString("message");
+            if (!message.isEmpty()) {
+                return message;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return errorBody;
     }
 }
