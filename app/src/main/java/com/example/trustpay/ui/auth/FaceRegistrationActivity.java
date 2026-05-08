@@ -188,6 +188,11 @@ public class FaceRegistrationActivity extends AppCompatActivity {
 
     @OptIn(markerClass = ExperimentalGetImage.class)
     private void analyzeFaceFrame(@NonNull ImageProxy imageProxy) {
+        if (currentCaptureStep == STEP_DONE) {
+            imageProxy.close();
+            return;
+        }
+
         Image mediaImage = imageProxy.getImage();
         if (mediaImage == null) {
             imageProxy.close();
@@ -327,6 +332,9 @@ public class FaceRegistrationActivity extends AppCompatActivity {
         }
 
         btnSubmitRegister.setEnabled(false);
+        btnCaptureFace.setEnabled(false);
+        tvFaceStatus.setText("Registering face. Please wait...");
+        tvFaceStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark));
 
         RegisterRequest request = new RegisterRequest(
                 username,
@@ -347,6 +355,7 @@ public class FaceRegistrationActivity extends AppCompatActivity {
             public void onResponse(@NonNull Call<RegisterResponse> call,
                                    @NonNull Response<RegisterResponse> response) {
                 btnSubmitRegister.setEnabled(true);
+                btnCaptureFace.setEnabled(currentCaptureStep != STEP_DONE);
 
                 if (response.isSuccessful() && response.body() != null
                         && "success".equalsIgnoreCase(response.body().getStatus())) {
@@ -364,12 +373,19 @@ public class FaceRegistrationActivity extends AppCompatActivity {
                             "Face not registered: " + errorMessage,
                             Toast.LENGTH_LONG
                     ).show();
+                    if (isFaceCaptureError(errorMessage)) {
+                        resetFaceCaptureForRetry();
+                    } else {
+                        refreshCaptureUi();
+                    }
                 }
             }
 
             @Override
             public void onFailure(@NonNull Call<RegisterResponse> call, @NonNull Throwable t) {
                 btnSubmitRegister.setEnabled(true);
+                btnCaptureFace.setEnabled(currentCaptureStep != STEP_DONE);
+                refreshCaptureUi();
                 Toast.makeText(
                         FaceRegistrationActivity.this,
                         "Face not registered. Network error: " + t.getMessage(),
@@ -379,21 +395,48 @@ public class FaceRegistrationActivity extends AppCompatActivity {
         });
     }
 
+    private boolean isFaceCaptureError(String errorMessage) {
+        if (errorMessage == null) {
+            return false;
+        }
+
+        String normalizedMessage = errorMessage.toLowerCase();
+        return normalizedMessage.contains("face")
+                || normalizedMessage.contains("detect")
+                || normalizedMessage.contains("recapture");
+    }
+
+    private void resetFaceCaptureForRetry() {
+        frontFaceBase64 = null;
+        leftFaceBase64 = null;
+        rightFaceBase64 = null;
+        currentCaptureStep = STEP_FRONT_FACE;
+        isValidFaceDetected = false;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            startCamera();
+        }
+        btnCaptureFace.setEnabled(true);
+        btnSubmitRegister.setEnabled(false);
+        showPosePopup("Try Again", "Please recapture your front, left and right face poses.");
+        refreshCaptureUi();
+    }
+
     private void showRegistrationSuccessDialog(RegisterResponse response) {
         if (cameraProvider != null) {
             cameraProvider.unbindAll();
         }
 
-        String message = "All poses get registered successfully";
+        String message = "Face registered successfully. You can now login.";
         if (response.getUpiId() != null && !response.getUpiId().isEmpty()) {
             message = message + "\nUPI: " + response.getUpiId();
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Registration Successful")
+                .setTitle("Face Registered")
                 .setMessage(message)
                 .setCancelable(false)
-                .setPositiveButton("Back to Login Page", (dialog, which) -> {
+                .setPositiveButton("Back to Login", (dialog, which) -> {
                     getSharedPreferences("user_data", MODE_PRIVATE).edit().clear().apply();
                     Intent intent = new Intent(FaceRegistrationActivity.this, LoginActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -436,12 +479,20 @@ public class FaceRegistrationActivity extends AppCompatActivity {
             currentCaptureStep = STEP_DONE;
             btnCaptureFace.setEnabled(false);
             btnSubmitRegister.setEnabled(true);
-            showPosePopup("Done", "All face poses captured. Tap Verify & Register.");
+            stopCameraAfterAllCaptures();
+            showPosePopup("Done", "All face poses captured. Tap Register.");
             Toast.makeText(this, "Right face captured", Toast.LENGTH_SHORT).show();
         }
 
         isValidFaceDetected = false;
         refreshCaptureUi();
+    }
+
+    private void stopCameraAfterAllCaptures() {
+        if (cameraProvider != null) {
+            cameraProvider.unbindAll();
+        }
+        imageCapture = null;
     }
 
     private void refreshCaptureUi() {
@@ -475,7 +526,7 @@ public class FaceRegistrationActivity extends AppCompatActivity {
         if (currentCaptureStep == STEP_RIGHT_FACE) {
             return "Turn right and align your face";
         }
-        return "All poses captured. Tap Verify & Register";
+        return "All poses captured. Tap Register";
     }
 
     private String getCurrentPoseReadyMessage() {
@@ -491,7 +542,7 @@ public class FaceRegistrationActivity extends AppCompatActivity {
         if (currentCaptureStep == STEP_RIGHT_FACE) {
             return "Right pose ready. Tap Capture Right Face";
         }
-        return "All poses captured. Tap Verify & Register";
+        return "All poses captured. Tap Register";
     }
 
     private void showPosePopup(String title, String message) {

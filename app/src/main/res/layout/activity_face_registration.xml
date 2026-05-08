@@ -84,7 +84,7 @@
                     android:layout_marginTop="14dp"
                     android:backgroundTint="#1E8E3E"
                     android:padding="14dp"
-                    android:text="Verify &amp; Register"
+                    android:text="Register"
                     android:textStyle="bold"
                     app:cornerRadius="8dp" />
 
